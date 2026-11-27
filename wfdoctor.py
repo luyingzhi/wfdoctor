@@ -485,6 +485,127 @@ def cmd_dir(args) -> int:
     return 0
 
 
+def _git_url(src: str) -> str:
+    """把扩展来源转成可 git clone 的地址"""
+    if not src:
+        return ""
+    s = src
+    if "github.com/" in s:
+        base = "https://github.com/" + s.split("github.com/")[-1]
+        # 去掉可能的 tree/ 子路径和末尾内容
+        parts = base.rstrip("/").split("/")
+        if len(parts) >= 5:
+            base = "/".join(parts[:5])
+        return base
+    if s.startswith("http") and not s.startswith("https://gist"):
+        return s
+    return ""
+
+
+def cmd_fix(args) -> int:
+    """根据体检结果生成安装脚本 + 下载清单"""
+    object_info = fetch_object_info(args.host)
+    node_map = load_node_map()
+
+    targets: list[str] = []
+    if os.path.isdir(args.path):
+        for root, _, fs in os.walk(args.path):
+            for f in fs:
+                if f.lower().endswith(".json") and "node_modules" not in root:
+                    targets.append(os.path.join(root, f))
+    else:
+        targets.append(args.path)
+
+    ext_count: dict[str, int] = {}
+    model_count: dict[str, int] = {}
+
+    for p in targets:
+        r = Report(path=p)
+        check_workflow(p, object_info, r)
+        for f in r.findings:
+            if f.kind == "missing_node":
+                src = node_map.get(f.node_type, "")
+                url = _git_url(src)
+                if url:
+                    ext_count[url] = ext_count.get(url, 0) + 1
+            elif f.kind == "missing_model":
+                name = f.detail.split("`")[1] if "`" in f.detail else ""
+                if name:
+                    model_count[name] = model_count.get(name, 0) + 1
+
+    if not ext_count and not model_count:
+        print(f"✅ 检查了 {len(targets)} 个工作流，没有发现需要安装的东西。")
+        return 0
+
+    outdir = args.out or "."
+    os.makedirs(outdir, exist_ok=True)
+
+    # 1) Windows 安装脚本
+    bat = os.path.join(outdir, "install_node_extensions.bat")
+    with open(bat, "w", encoding="utf-8", newline="\r\n") as fh:
+        fh.write("@echo off\nchcp 65001 >nul\n")
+        fh.write("REM wfdoctor 生成的扩展安装脚本\n")
+        fh.write('REM 用法: 把 COMFY_DIR 改成你的 ComfyUI 目录，然后双击运行\n\n')
+        fh.write('set COMFY_DIR=E:\\ComfyUI\n')
+        fh.write('if not exist "%COMFY_DIR%\\custom_nodes" (\n')
+        fh.write('  echo [错误] 找不到 %COMFY_DIR%\\custom_nodes，请先改本文件里的 COMFY_DIR\n')
+        fh.write('  pause & exit /b 1\n)\n\n')
+        for url in sorted(ext_count, key=lambda u: -ext_count[u]):
+            name = url.rstrip("/").split("/")[-1].replace(".git", "")
+            fh.write(f'echo [安装] {name}  (需要 {ext_count[url]} 处缺失)\n')
+            fh.write(f'if not exist "%COMFY_DIR%\\custom_nodes\\{name}" (\n')
+            fh.write(f'  git clone {url} "%COMFY_DIR%\\custom_nodes\\{name}"\n')
+            fh.write(') else (\n')
+            fh.write(f'  echo   已存在，跳过\n)\n\n')
+        fh.write('echo.\necho 全部完成。请重启 ComfyUI。\npause\n')
+
+    # 2) bash 版本
+    sh = os.path.join(outdir, "install_node_extensions.sh")
+    with open(sh, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("#!/usr/bin/env bash\n")
+        fh.write("# wfdoctor 生成的扩展安装脚本\n")
+        fh.write('COMFY_DIR="${COMFY_DIR:-$HOME/ComfyUI}"\n')
+        fh.write('set -e\n\n')
+        for url in sorted(ext_count, key=lambda u: -ext_count[u]):
+            name = url.rstrip("/").split("/")[-1].replace(".git", "")
+            fh.write(f'echo "[安装] {name} (需要 {ext_count[url]} 处缺失)"\n')
+            fh.write(f'[ -d "$COMFY_DIR/custom_nodes/{name}" ] || git clone {url} "$COMFY_DIR/custom_nodes/{name}"\n')
+        fh.write('\necho "全部完成，请重启 ComfyUI"\n')
+
+    # 3) 模型清单
+    mp = os.path.join(outdir, "missing_models.txt")
+    with open(mp, "w", encoding="utf-8") as fh:
+        fh.write("# wfdoctor 生成的缺失模型清单\n")
+        fh.write("# 说明：模型通常不能靠脚本自动下载（多数需要登录 / 授权），\n")
+        fh.write("#       这里列出文件名和出现次数，方便你在 Civitai / HuggingFace 上逐个找。\n")
+        fh.write("# 格式：出现次数  文件名\n\n")
+        for name, cnt in sorted(model_count.items(), key=lambda x: -x[1]):
+            fh.write(f"{cnt:>5}  {name}\n")
+
+    # 4) 汇总报告
+    rp = os.path.join(outdir, "wfdoctor_report.md")
+    with open(rp, "w", encoding="utf-8") as fh:
+        fh.write("# wfdoctor 体检报告\n\n")
+        fh.write(f"- 检查工作流：{len(targets)} 个\n")
+        fh.write(f"- 需要安装扩展：{len(ext_count)} 个\n")
+        fh.write(f"- 缺失模型：{len(model_count)} 个\n\n")
+        fh.write("## 需要安装的扩展\n\n")
+        for url in sorted(ext_count, key=lambda u: -ext_count[u]):
+            fh.write(f"- [ ] {url} —— 影响 {ext_count[url]} 处\n")
+        fh.write("\n## 缺失模型（前 30）\n\n")
+        for name, cnt in sorted(model_count.items(), key=lambda x: -x[1])[:30]:
+            fh.write(f"- [ ] `{name}` —— 影响 {cnt} 处\n")
+
+    print(f"已生成 4 个文件到 {os.path.abspath(outdir)}：")
+    print(f"  1. install_node_extensions.bat   —— Windows 一键装扩展（改一行 COMFY_DIR 即可）")
+    print(f"  2. install_node_extensions.sh    —— Linux/Mac 版")
+    print(f"  3. missing_models.txt            —— 缺失模型清单（{len(model_count)} 个）")
+    print(f"  4. wfdoctor_report.md            —— 完整报告（可勾选）")
+    print()
+    print(f"覆盖范围：{len(ext_count)} 个扩展即可补齐所有缺失节点。")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         prog="wfdoctor",
@@ -503,6 +624,11 @@ def main() -> int:
     p2 = sub.add_parser("check-dir", help="批量检查目录下所有 json")
     p2.add_argument("dir")
     p2.set_defaults(func=cmd_dir)
+
+    p3 = sub.add_parser("fix", help="生成修复脚本（装扩展的 bat/sh + 模型清单 + 报告）")
+    p3.add_argument("path", help="工作流文件或目录")
+    p3.add_argument("--out", "-o", default="wfdoctor_fix", help="输出目录（默认 %(default)s）")
+    p3.set_defaults(func=cmd_fix)
 
     args = ap.parse_args()
     # 让 --host/--json 对子命令生效

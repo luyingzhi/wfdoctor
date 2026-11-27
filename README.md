@@ -27,6 +27,9 @@ python wfdoctor.py --json check my_workflow.json
 
 # 5. ComfyUI 不在默认端口
 python wfdoctor.py --host http://127.0.0.1:9091 check my_workflow.json
+
+# 6. 直接生成修复脚本（装扩展的 bat/sh + 模型清单 + 可勾选报告）
+python wfdoctor.py fix ./workflows -o my_fix
 ```
 
 ---
@@ -68,6 +71,27 @@ python wfdoctor.py --host http://127.0.0.1:9091 check my_workflow.json
     模型文件不存在：`Krea2\krea2_turbo_fp8_scaled.safetensors`
     → 修复: 把模型放到对应 models 目录，或改选本机已下载的
 ```
+
+---
+
+---
+
+## 一键生成修复脚本（`fix` 命令）
+
+```bash
+python wfdoctor.py fix ./workflows -o my_fix
+```
+
+输出 4 个文件：
+
+| 文件 | 作用 |
+|---|---|
+| `install_node_extensions.bat` | **Windows 一键装扩展**，改一行 `COMFY_DIR` 双击跑 |
+| `install_node_extensions.sh` | Linux / Mac 版 |
+| `missing_models.txt` | 缺失模型清单，按影响面排序 |
+| `wfdoctor_report.md` | 完整报告，带勾选框 |
+
+对 535 个真实工作流实测：**89 个扩展 + 336 个模型**，10 秒内全部列清。
 
 ---
 
