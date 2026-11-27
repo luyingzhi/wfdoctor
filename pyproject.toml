@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wfdoctor"
+version = "1.0.0"
+description = "ComfyUI workflow doctor: find missing custom nodes, missing models and broken links in one command"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "luyingzhi" }]
+keywords = ["comfyui", "workflow", "stable-diffusion", "diagnostics"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Multimedia :: Graphics",
+]
+
+[project.scripts]
+wfdoctor = "wfdoctor:main"
+
+[project.urls]
+Homepage = "https://github.com/luyingzhi/wfdoctor"

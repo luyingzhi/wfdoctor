@@ -1,0 +1,4 @@
+include wfdoctor.py
+include node_map.json
+include README.md
+include LICENSE
