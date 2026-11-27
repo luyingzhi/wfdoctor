@@ -93,6 +93,31 @@ python wfdoctor.py fix ./workflows -o my_fix
 
 对 535 个真实工作流实测：**89 个扩展 + 336 个模型**，10 秒内全部列清。
 
+
+---
+
+## 合规打标（`label` 命令）
+
+2025 年起，《人工智能生成合成内容标识办法》要求 AI 生成内容带**显式标识**。
+`label` 给你的成片一次性打上元数据 + 角标：
+
+```bash
+python wfdoctor.py label ./outputs -o ./deliver --watermark "AI 生成"
+```
+
+写入的元数据字段：
+
+| 字段 | 值 |
+|---|---|
+| `AI-Generated` | `true` |
+| `AI-Generated-By` | 模型名 |
+| `AI-Generated-At` | 生成时间（ISO 8601） |
+| `AI-Notice` | AI generated content, not a real photograph |
+| `AI-Notice-ZH` | 本图片由人工智能生成，非真实拍摄 |
+
+同时生成 `AI-生成内容说明.txt`，可直接随图交给客户。
+原有的 ComfyUI `workflow` / `prompt` 元数据会**保留**，不破坏可复现性。
+
 ---
 
 ## 能查什么
