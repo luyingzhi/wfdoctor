@@ -1,5 +1,7 @@
 # wfdoctor
 
+<img src="docs/demo.gif" alt="wfdoctor 批量体检演示" width="820">
+
 **一条命令查出 ComfyUI 工作流为什么跑不起来。**
 
 从网上（Civitai、GitHub、朋友）下载的 ComfyUI 工作流，直接拖进界面，最常见的三种失败：
